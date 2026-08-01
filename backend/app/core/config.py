@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     # --- Environment ---
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
+    # localhost:5173 (Vite dev server), localhost:3000 (fallback/CRA-style
+    # dev), localhost (docker-compose nginx on port 80)
+    ALLOWED_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000", "http://localhost"]
 
     # --- Database / Cache ---
     DATABASE_URL: str
