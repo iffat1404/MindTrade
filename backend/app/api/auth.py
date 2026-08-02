@@ -81,3 +81,18 @@ async def get_current_user(
 @router.get("/me", response_model=UserResponse)
 async def me(current_user: Account = Depends(get_current_user)) -> Account:
     return current_user
+
+
+def require_role(required_role: str):
+    """FastAPI dependency factory that gates an endpoint on the current
+    account's role. Usage:
+
+        @router.get("/api/admin/accounts", dependencies=[Depends(require_role("admin"))])
+    """
+
+    async def check_role(current_user: Account = Depends(get_current_user)) -> Account:
+        if current_user.role != required_role:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+        return current_user
+
+    return check_role
