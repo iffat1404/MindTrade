@@ -1,6 +1,14 @@
 from decimal import Decimal
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Local dev default: this file lives at backend/app/core/config.py, three
+# levels under the repo root, and data/ is a sibling of backend/. In Docker
+# this is overridden to /app/data via docker-compose.yml's volume mount and
+# DATA_DIR env var, since the image only contains backend/'s contents (the
+# repo-root-relative computation below wouldn't resolve correctly there).
+_REPO_ROOT_DATA_DIR = Path(__file__).resolve().parents[3] / "data"
 
 
 class Settings(BaseSettings):
@@ -12,6 +20,9 @@ class Settings(BaseSettings):
     # localhost:5173 (Vite dev server), localhost:3000 (fallback/CRA-style
     # dev), localhost (docker-compose nginx on port 80)
     ALLOWED_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000", "http://localhost"]
+
+    # --- Simulation data (Module G data loaders) ---
+    DATA_DIR: str = str(_REPO_ROOT_DATA_DIR)
 
     # --- Database / Cache ---
     DATABASE_URL: str

@@ -28,6 +28,9 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       ADMIN_BOOTSTRAP_USERNAME: ${ADMIN_BOOTSTRAP_USERNAME}
       ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD}
+      DATA_DIR: /app/data
+    volumes:
+      - ./data:/app/data:ro
     ports: ["8000:8000"]
 
   frontend:
