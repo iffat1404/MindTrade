@@ -78,6 +78,13 @@ class KYCSubmission(Base):
     account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("accounts.id"), nullable=False)
     id_type: Mapped[str] = mapped_column(String(30), nullable=False)
     document_path: Mapped[str] = mapped_column(Text, nullable=False)
+    # Trader-declared name at submission time, matched against
+    # extracted_full_name by kyc_engine's name_match check (fuzzywuzzy).
+    # Not in the original MASTER_BUILD_PLAN Part 3 schema -- added because
+    # requirements.txt pulls in fuzzywuzzy explicitly for "Name matching
+    # (KYC)", which requires a second name to compare the extraction
+    # against, and no such field existed anywhere in the schema.
+    declared_full_name: Mapped[str] = mapped_column(Text, nullable=False)
     extracted_full_name: Mapped[Optional[str]] = mapped_column(Text)
     extracted_dob: Mapped[Optional[date]] = mapped_column(Date)
     extracted_id_number: Mapped[Optional[str]] = mapped_column(Text)
