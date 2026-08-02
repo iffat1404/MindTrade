@@ -19,9 +19,14 @@ _MINUTE_DIR = _DATA_DIR / "simulation_price_data_July_1-Aug_30"
 _NEWS_DIR = _DATA_DIR / "simulation_news_data_July_1-Aug_30"
 _NEWS_FILENAMES = ["simulated_July_news_2026.json", "simulated_August_news_2026.json"]
 
-# Batch size for bulk upserts, kept well under PostgreSQL's 65535-parameter
-# limit per statement even for the widest table here (7 columns/row).
-_UPSERT_CHUNK_SIZE = 5000
+# asyncpg's hard ceiling on bind parameters per statement (confirmed via
+# `asyncpg.exceptions._base.InterfaceError: the number of query arguments
+# cannot exceed 32767` -- this is a real protocol limit, not the
+# commonly-cited-but-wrong 65535). Chunk size below is computed per table
+# from this, since a fixed row count that's safe for a 7-column table
+# (price_history_minute) silently isn't for a 10-column one
+# (price_history_daily): 5000 rows x 10 columns = 50000 params > 32767.
+_MAX_QUERY_PARAMS = 32767
 
 
 def _ticker_from_daily_filename(path: Path) -> str:
@@ -56,9 +61,11 @@ async def _upsert_in_chunks(session: AsyncSession, table, rows: list[dict], inde
     if not rows:
         return
     update_cols = [c for c in rows[0] if c not in index_elements]
+    num_columns = len(rows[0])
+    chunk_size = max(1, _MAX_QUERY_PARAMS // num_columns)
     try:
-        for i in range(0, len(rows), _UPSERT_CHUNK_SIZE):
-            chunk = rows[i : i + _UPSERT_CHUNK_SIZE]
+        for i in range(0, len(rows), chunk_size):
+            chunk = rows[i : i + chunk_size]
             stmt = pg_insert(table).values(chunk)
             stmt = stmt.on_conflict_do_update(
                 index_elements=index_elements,
