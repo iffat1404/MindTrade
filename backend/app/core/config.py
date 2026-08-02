@@ -83,5 +83,32 @@ class Settings(BaseSettings):
     KYC_MIN_AGE_YEARS: int = 18
     KYC_NAME_MATCH_MIN_SCORE: int = 80  # fuzzywuzzy ratio (0-100)
 
+    # --- NSE matching + feed simulator (Sprint 4) ---
+    # PLACEHOLDER: MARKET orders fill against a synthetic bid/ask around the
+    # tick's close price when there's no real resting counterparty to match
+    # against (per Sprint 3's "fills at synthetic ask"). No spread value is
+    # specified anywhere in the planning docs.
+    SYNTHETIC_SPREAD_BPS: Decimal = Decimal("5")  # 0.05%
+
+    # Real seconds per simulated minute at 1x feed speed; speed_multiplier
+    # (see FeedState) divides this, so 10x = 1/10th the interval, etc. Not
+    # specified in the docs beyond "configurable speed" -- 1 real second
+    # per simulated minute means the full Jun 30-Aug 29 dataset (~119k
+    # simulated minutes) replays in ~33 hours at 1x, ~20 minutes at 100x.
+    FEED_BASE_TICK_INTERVAL_SECONDS: float = 1.0
+    FEED_DEFAULT_SPEED_MULTIPLIER: int = 1
+
+    # Not in the schema anywhere -- no ticker-to-sector mapping exists.
+    # Real-world GICS sector classifications for the 7-ticker universe.
+    SECTOR_BY_TICKER: dict[str, str] = {
+        "AAPL": "Information Technology",
+        "MSFT": "Information Technology",
+        "IBM": "Information Technology",
+        "GOOG": "Communication Services",
+        "TSLA": "Consumer Discretionary",
+        "WMT": "Consumer Staples",
+        "UL": "Consumer Staples",
+    }
+
 
 settings = Settings()

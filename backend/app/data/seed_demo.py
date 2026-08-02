@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.security import get_password_hash
-from app.models.orm import Account, KYCSubmission, Order, Position
+from app.models.orm import Account, KYCSubmission, Order, Position, PositionLot
 
 logger = logging.getLogger("mindtrade.seed")
 
@@ -74,6 +74,20 @@ async def seed_database(session: AsyncSession) -> None:
         session.add(Position(account_id=trader1.id, ticker="AAPL", signed_qty=100, avg_cost=Decimal("185.00")))
         session.add(Position(account_id=trader1.id, ticker="MSFT", signed_qty=50, avg_cost=Decimal("370.00")))
         session.add(Position(account_id=trader1.id, ticker="TSLA", signed_qty=-20, avg_cost=Decimal("245.00")))
+
+        # Matching opening lots (Sprint 4): these positions were seeded
+        # directly rather than built from real fills, so portfolio_engine's
+        # FIFO consumption needs an explicit starting lot for each -- one
+        # lot per seeded position, dated to account creation.
+        session.add(
+            PositionLot(account_id=trader1.id, ticker="AAPL", side="LONG", qty_remaining=100, cost_price=Decimal("185.00"))
+        )
+        session.add(
+            PositionLot(account_id=trader1.id, ticker="MSFT", side="LONG", qty_remaining=50, cost_price=Decimal("370.00"))
+        )
+        session.add(
+            PositionLot(account_id=trader1.id, ticker="TSLA", side="SHORT", qty_remaining=20, cost_price=Decimal("245.00"))
+        )
 
         # A couple of resting limit orders.
         session.add(

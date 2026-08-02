@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models.orm import Account, Order, Position, PriceHistoryDaily, PriceHistoryMinute
+from app.models.orm import Account, FeedState, Order, Position, PriceHistoryDaily, PriceHistoryMinute
 from app.models.schemas import OrderCreateRequest
 
 
@@ -35,35 +35,52 @@ def _parse_hhmm(value: str) -> time:
     return datetime.strptime(value, "%H:%M").time()
 
 
-async def get_last_price(db: AsyncSession, ticker: str) -> Optional[Decimal]:
-    """Latest available close for `ticker`. Sprint 3 has no live feed yet
-    (the feed simulator is Sprint 4), so "current price" is the most recent
-    daily close -- Sprint 4 supersedes this with real tick data once it
-    exists; the signature (db, ticker) -> price stays the same either way.
-    """
-    stmt = (
-        select(PriceHistoryDaily.close)
-        .where(PriceHistoryDaily.ticker == ticker)
-        .order_by(PriceHistoryDaily.date.desc())
-        .limit(1)
-    )
-    return await db.scalar(stmt)
-
-
 async def get_latest_market_time(db: AsyncSession) -> Optional[datetime]:
-    """Latest timestamp across all loaded minute bars -- used as "now" for
-    market-hours/MIS-square-off checks until the feed simulator (Sprint 4)
-    provides a live simulated clock.
+    """The feed simulator's current simulated tick (Sprint 4) if it has
+    started, else the latest loaded minute-bar timestamp as a fallback --
+    used as "now" for market-hours/MIS-square-off checks and as the
+    as-of time for get_last_price below.
 
     This platform replays a fixed simulated period (Jun 30-Aug 29, 2026);
     real wall-clock time has no relationship to that calendar and using it
     directly would make order placement randomly fail with MARKET_CLOSED
     depending purely on what time of day someone happens to run the demo.
-    The latest loaded minute-bar timestamp is always within trading hours
-    by construction (that's what the data represents), so it's a much
-    better stand-in "now" than datetime.now() until Sprint 4 exists.
+    Before the feed simulator's first tick (e.g. right after a fresh boot),
+    there's no simulated "now" yet, so the latest loaded bar is the best
+    available stand-in -- always within trading hours by construction,
+    unlike datetime.now().
     """
+    feed_state = await db.get(FeedState, True)
+    if feed_state is not None and feed_state.current_tick_time is not None:
+        return feed_state.current_tick_time
     return await db.scalar(select(func.max(PriceHistoryMinute.timestamp)))
+
+
+async def get_last_price(db: AsyncSession, ticker: str) -> Optional[Decimal]:
+    """Most recent close for `ticker` at or before the current simulated
+    time (see get_latest_market_time): prefers minute-level data (once the
+    feed simulator has advanced past it), falling back to the latest daily
+    close if no minute bar is available yet at or before that time.
+    """
+    current_time = await get_latest_market_time(db)
+    if current_time is not None:
+        minute_stmt = (
+            select(PriceHistoryMinute.close)
+            .where(PriceHistoryMinute.ticker == ticker, PriceHistoryMinute.timestamp <= current_time)
+            .order_by(PriceHistoryMinute.timestamp.desc())
+            .limit(1)
+        )
+        price = await db.scalar(minute_stmt)
+        if price is not None:
+            return price
+
+    daily_stmt = (
+        select(PriceHistoryDaily.close)
+        .where(PriceHistoryDaily.ticker == ticker)
+        .order_by(PriceHistoryDaily.date.desc())
+        .limit(1)
+    )
+    return await db.scalar(daily_stmt)
 
 
 # ---------------------------------------------------------------------------
