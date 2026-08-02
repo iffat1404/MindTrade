@@ -22,8 +22,17 @@ SIMULATION_START = datetime(2026, 6, 30, tzinfo=timezone.utc)
 
 
 @dataclass
+class PositionLotSummary:
+    side: str
+    qty_remaining: int
+    cost_price: Decimal
+    opened_at: datetime
+
+
+@dataclass
 class PositionSummary:
     ticker: str
+    product_type: str
     signed_qty: int
     avg_cost: Decimal
     current_price: Decimal
@@ -31,6 +40,7 @@ class PositionSummary:
     unrealized_pnl: Decimal
     realized_pnl: Decimal
     sector: str
+    lots: list[PositionLotSummary] = field(default_factory=list)
 
 
 @dataclass
@@ -182,7 +192,9 @@ def _compute_cagr(starting_capital: Decimal, net_worth: Decimal, current_market_
     return Decimal(str(round(cagr, 6)))
 
 
-async def get_portfolio(db: AsyncSession, account: Account, *, is_backtest: bool = False) -> PortfolioSummary:
+async def get_portfolio(
+    db: AsyncSession, account: Account, *, is_backtest: bool = False, include_lots: bool = False
+) -> PortfolioSummary:
     positions = (
         await db.scalars(
             select(Position).where(
@@ -202,9 +214,34 @@ async def get_portfolio(db: AsyncSession, account: Account, *, is_backtest: bool
         current_price = await get_last_price(db, p.ticker) or p.avg_cost
         market_value = p.signed_qty * current_price
         unrealized = (current_price - p.avg_cost) * p.signed_qty
+
+        lots: list[PositionLotSummary] = []
+        if include_lots:
+            lot_rows = (
+                await db.scalars(
+                    select(PositionLot)
+                    .where(
+                        PositionLot.account_id == account.id,
+                        PositionLot.ticker == p.ticker,
+                        PositionLot.is_backtest == is_backtest,
+                        PositionLot.is_intraday == p.is_intraday,
+                        PositionLot.qty_remaining > 0,
+                    )
+                    .order_by(PositionLot.opened_at.asc())
+                )
+            ).all()
+            lots = [
+                PositionLotSummary(
+                    side=lot.side, qty_remaining=lot.qty_remaining, cost_price=lot.cost_price,
+                    opened_at=lot.opened_at,
+                )
+                for lot in lot_rows
+            ]
+
         summaries.append(
             PositionSummary(
                 ticker=p.ticker,
+                product_type="MIS" if p.is_intraday else "CNC",
                 signed_qty=p.signed_qty,
                 avg_cost=p.avg_cost,
                 current_price=current_price,
@@ -212,6 +249,7 @@ async def get_portfolio(db: AsyncSession, account: Account, *, is_backtest: bool
                 unrealized_pnl=unrealized,
                 realized_pnl=p.realized_pnl,
                 sector=settings.SECTOR_BY_TICKER.get(p.ticker, "Other"),
+                lots=lots,
             )
         )
         market_value_total += market_value

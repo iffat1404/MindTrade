@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -10,6 +11,7 @@ from app.core.config import settings
 from app.core.db import AsyncSessionLocal, close_db
 from app.data.seed_demo import seed_database
 from app.services.data.loaders import load_historical_daily_data, load_intraday_minute_data, load_sentiment_data
+from app.services.feed_simulator import run_feed_loop
 
 logging.basicConfig(level=settings.LOG_LEVEL)
 logger = logging.getLogger("mindtrade")
@@ -27,7 +29,20 @@ async def lifespan(app: FastAPI):
         await seed_database(session)
 
     logger.info("Startup complete: data loaded, demo accounts seeded")
+
+    # Feed simulator (Sprint 4 Task 4.4): runs as a background task for the
+    # whole app lifetime, starts paused (feed_state.is_running defaults to
+    # False) until an admin hits POST /api/admin/feed/start.
+    feed_stop_event = asyncio.Event()
+    feed_task = asyncio.create_task(run_feed_loop(AsyncSessionLocal, stop_event=feed_stop_event))
+
     yield
+
+    feed_stop_event.set()
+    try:
+        await asyncio.wait_for(feed_task, timeout=5)
+    except asyncio.TimeoutError:
+        feed_task.cancel()
     await close_db()
     logger.info("MindTrade Platform shut down")
 

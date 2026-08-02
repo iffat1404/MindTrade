@@ -125,3 +125,53 @@ class OrderEventResponse(BaseModel):
 
 class OrderDetailResponse(OrderResponse):
     events: list[OrderEventResponse] = []
+
+
+# ---------------------------------------------------------------------------
+# Portfolio (Sprint 4)
+# ---------------------------------------------------------------------------
+class PositionLotResponse(BaseModel):
+    side: str
+    qty_remaining: int
+    cost_price: Decimal
+    opened_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PositionSummaryResponse(BaseModel):
+    ticker: str
+    product_type: str
+    signed_qty: int
+    avg_cost: Decimal
+    current_price: Decimal
+    market_value: Decimal
+    unrealized_pnl: Decimal
+    realized_pnl: Decimal
+    sector: str
+    lots: list[PositionLotResponse] = []
+
+    model_config = {"from_attributes": True}
+
+
+class PortfolioResponse(BaseModel):
+    cash_balance: Decimal
+    margin_used: Decimal
+    positions: list[PositionSummaryResponse]
+    market_value_total: Decimal
+    net_worth: Decimal
+    unrealized_pnl_total: Decimal
+    realized_pnl_total: Decimal
+    cagr: Optional[Decimal]
+
+    model_config = {"from_attributes": True}
+
+
+class SectorExposureItem(BaseModel):
+    sector: str
+    market_value: Decimal
+    pct_of_net_worth: Decimal
+
+
+class SectorExposureResponse(BaseModel):
+    sectors: list[SectorExposureItem]
