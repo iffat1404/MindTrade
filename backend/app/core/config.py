@@ -76,5 +76,12 @@ class Settings(BaseSettings):
     BRS_CAUTION_MAX: int = 50
     BRS_WARNING_MAX: int = 75
 
+    # --- KYC (Module H, Sprint 2) ---
+    KYC_UPLOAD_DIR: str = "uploads"  # relative to backend/ (see .gitignore: backend/uploads/*)
+    KYC_MAX_FILE_SIZE_MB: int = 10
+    KYC_ALLOWED_MIME_TYPES: list[str] = ["application/pdf", "image/jpeg", "image/png"]
+    KYC_MIN_AGE_YEARS: int = 18
+    KYC_NAME_MATCH_MIN_SCORE: int = 80  # fuzzywuzzy ratio (0-100)
+
 
 settings = Settings()
