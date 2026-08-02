@@ -154,6 +154,36 @@ async def _settle_fill(
     )
 
 
+async def square_off_position(db: AsyncSession, position: Position, price: Decimal, as_of: datetime) -> None:
+    """Force-closes a MIS position (EOD auto square-off, Task 4.4). Creates
+    a real Order -- so it shows up in order history like any other trade,
+    not as an invisible side effect -- immediately filled via
+    _settle_fill, the same accounting path as every other fill.
+    """
+    side = "SELL" if position.signed_qty > 0 else "BUY"
+    qty = abs(position.signed_qty)
+
+    order = Order(
+        account_id=position.account_id, ticker=position.ticker, side=side, order_type="MARKET",
+        product_type="MIS", qty=qty, remaining_qty=qty, status="ROUTED",
+    )
+    db.add(order)
+    await db.flush()
+    _log_event(db, order, None, "NEW", "EOD auto square-off")
+    _log_event(db, order, "NEW", "ROUTED", "EOD auto square-off")
+
+    log = {
+        "tick_timestamp": as_of.isoformat(),
+        "order_id": str(order.id),
+        "side": side,
+        "order_type": "MARKET",
+        "fill_price": str(price),
+        "priority_reason": f"EOD auto square-off at {settings.MIS_SQUARE_OFF_TIME_UTC} UTC",
+        "algorithm": "NSE_FIFO_PriceTime_v1",
+    }
+    await _settle_fill(db, order, qty, price, matched_at=as_of, match_type="EOD_SQUARE_OFF", matching_log=log)
+
+
 async def _recompute_margin_used(db: AsyncSession, account: Account) -> None:
     """Recomputes margin_used from scratch as the total capital required
     to hold all of the account's current MIS positions, rather than
