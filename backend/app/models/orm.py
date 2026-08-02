@@ -239,6 +239,38 @@ class Position(Base):
 
 
 # ---------------------------------------------------------------------------
+# 7b. PositionLot (Sprint 4)
+# ---------------------------------------------------------------------------
+# Not in the original MASTER_BUILD_PLAN Part 3 schema. Added because
+# positions.avg_cost is a single blended value that cannot represent what
+# Sprint 4's spec explicitly asks for ("Use FIFO lots for realized P&L on
+# partial closes") -- weighted-average and FIFO give different realized
+# P&L on a partial close whenever a position was built from fills at
+# different prices, so a genuine FIFO queue needs each opening fill kept
+# as its own row, consumed front-to-back as the position is reduced.
+class PositionLot(Base):
+    __tablename__ = "position_lots"
+    __table_args__ = (
+        CheckConstraint("side IN ('LONG', 'SHORT')", name="ck_position_lots_side"),
+        CheckConstraint("qty_remaining >= 0", name="ck_position_lots_qty_remaining_non_negative"),
+        Index("idx_position_lots_account_ticker", "account_id", "ticker", "is_backtest", "is_intraday", "opened_at"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("accounts.id"), nullable=False)
+    ticker: Mapped[str] = mapped_column(String(10), nullable=False)
+    is_backtest: Mapped[bool] = mapped_column(nullable=False, default=False, server_default=text("false"))
+    is_intraday: Mapped[bool] = mapped_column(nullable=False, default=False, server_default=text("false"))
+    side: Mapped[str] = mapped_column(String(5), nullable=False)
+    qty_remaining: Mapped[int] = mapped_column(Integer, nullable=False)
+    cost_price: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("NOW()"))
+    fill_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("fills.id"))
+
+    account: Mapped["Account"] = relationship()
+
+
+# ---------------------------------------------------------------------------
 # 8. CashLedger
 # ---------------------------------------------------------------------------
 class CashLedger(Base):
@@ -386,3 +418,24 @@ class TraderBehavioralHistory(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("NOW()"))
 
     account: Mapped["Account"] = relationship(back_populates="behavioral_history")
+
+
+# ---------------------------------------------------------------------------
+# 16. FeedState  (Sprint 4)
+# ---------------------------------------------------------------------------
+# Not in the original 15-table schema. The feed simulator needs somewhere
+# durable to keep its position in the replay (current simulated tick,
+# running/paused, speed) so GET /api/admin/feed/status and POST .../reset
+# survive an app restart -- Task 4.4 explicitly calls for "WAL-safe
+# PostgreSQL writes", which is exactly what a real table (vs. an in-memory
+# variable or Redis) gives you. Singleton table: exactly one row, fixed id.
+class FeedState(Base):
+    __tablename__ = "feed_state"
+
+    id: Mapped[bool] = mapped_column(primary_key=True, default=True, server_default=text("true"))
+    current_tick_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    is_running: Mapped[bool] = mapped_column(nullable=False, default=False, server_default=text("false"))
+    speed_multiplier: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("NOW()"))
+
+    __table_args__ = (CheckConstraint("id", name="ck_feed_state_singleton"),)
