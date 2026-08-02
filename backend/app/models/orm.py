@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     Date,
     DateTime,
@@ -259,7 +260,7 @@ class PriceHistoryDaily(Base):
     low: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
     close: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
     adj_close: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
-    volume: Mapped[int] = mapped_column(nullable=False)
+    volume: Mapped[int] = mapped_column(BigInteger, nullable=False)
     dividend_amount: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False, server_default="0")
     split_coefficient: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False, server_default="1.0")
 
@@ -282,7 +283,7 @@ class PriceHistoryMinute(Base):
     high: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
     low: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
     close: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
-    volume: Mapped[int] = mapped_column(nullable=False)
+    volume: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
 
 # ---------------------------------------------------------------------------
