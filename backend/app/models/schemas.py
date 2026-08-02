@@ -1,9 +1,10 @@
 import re
+from datetime import datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class RegisterRequest(BaseModel):
@@ -46,3 +47,81 @@ class UserResponse(BaseModel):
     cash_balance: Decimal
 
     model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Orders (Sprint 3)
+# ---------------------------------------------------------------------------
+class OrderCreateRequest(BaseModel):
+    """Shape/structural validation only. Business rules (KYC, buying power,
+    price collar, ...) are the order engine's 12-check chain, which returns
+    a reason_code rather than a 422 -- these validators only reject orders
+    that are malformed regardless of account or market state.
+    """
+
+    # JSON field is "type" (per FRONTEND_DESIGN_GUIDE's order form + the
+    # behavioral-guard snippets in MASTER_BUILD_PLAN), but `type` shadows a
+    # builtin, so it's aliased to order_type internally -- matching the same
+    # rename already used on the Order ORM model.
+    model_config = {"populate_by_name": True}
+
+    ticker: str
+    side: Literal["BUY", "SELL"]
+    order_type: Literal["MARKET", "LIMIT", "SL", "SL-M"] = Field(alias="type")
+    product_type: Literal["CNC", "MIS"] = "CNC"
+    qty: int = Field(gt=0)
+    limit_price: Optional[Decimal] = Field(default=None, gt=0)
+    stop_trigger_price: Optional[Decimal] = Field(default=None, gt=0)
+    stop_limit_price: Optional[Decimal] = Field(default=None, gt=0)
+
+    @field_validator("ticker")
+    @classmethod
+    def normalize_ticker(cls, v: str) -> str:
+        return v.strip().upper()
+
+    @model_validator(mode="after")
+    def required_prices_per_order_type(self) -> "OrderCreateRequest":
+        if self.order_type == "LIMIT" and self.limit_price is None:
+            raise ValueError("limit_price is required for LIMIT orders")
+        if self.order_type in ("SL", "SL-M") and self.stop_trigger_price is None:
+            raise ValueError("stop_trigger_price is required for SL and SL-M orders")
+        if self.order_type == "SL" and self.stop_limit_price is None:
+            raise ValueError("stop_limit_price is required for SL orders")
+        if self.order_type == "MARKET" and self.limit_price is not None:
+            raise ValueError("limit_price must not be set for MARKET orders")
+        return self
+
+
+class OrderResponse(BaseModel):
+    id: UUID
+    ticker: str
+    side: str
+    order_type: str = Field(serialization_alias="type")
+    product_type: str
+    qty: int
+    remaining_qty: int
+    limit_price: Optional[Decimal]
+    stop_trigger_price: Optional[Decimal]
+    stop_limit_price: Optional[Decimal]
+    status: str
+    created_at: datetime
+    # Populated by POST /api/orders when the 12-check chain rejects the
+    # order (per FRONTEND_DESIGN_GUIDE's {id, status, reason_code?}
+    # response shape) -- None on a normal GET or a passing order.
+    reason_code: Optional[str] = None
+    message: Optional[str] = None
+
+    model_config = {"from_attributes": True, "populate_by_name": True}
+
+
+class OrderEventResponse(BaseModel):
+    from_state: Optional[str]
+    to_state: str
+    reason: Optional[str]
+    timestamp: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class OrderDetailResponse(OrderResponse):
+    events: list[OrderEventResponse] = []
