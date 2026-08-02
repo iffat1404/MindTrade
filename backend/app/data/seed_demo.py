@@ -89,7 +89,11 @@ async def seed_database(session: AsyncSession) -> None:
             PositionLot(account_id=trader1.id, ticker="TSLA", side="SHORT", qty_remaining=20, cost_price=Decimal("245.00"))
         )
 
-        # A couple of resting limit orders.
+        # A couple of resting limit orders. status="ROUTED" (not
+        # "VALIDATED") so the Sprint 4 matching engine's process_tick
+        # actually picks these up -- _get_resting_orders only queries
+        # status == "ROUTED", matching where POST /api/orders leaves a
+        # freshly-passed order.
         session.add(
             Order(
                 account_id=trader1.id,
@@ -100,7 +104,7 @@ async def seed_database(session: AsyncSession) -> None:
                 qty=10,
                 remaining_qty=10,
                 limit_price=Decimal("150.00"),
-                status="VALIDATED",
+                status="ROUTED",
             )
         )
         session.add(
@@ -113,7 +117,7 @@ async def seed_database(session: AsyncSession) -> None:
                 qty=15,
                 remaining_qty=15,
                 limit_price=Decimal("165.00"),
-                status="VALIDATED",
+                status="ROUTED",
             )
         )
         logger.info("Seeded demo_trader1 (positions + resting limit orders)")

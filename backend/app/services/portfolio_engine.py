@@ -282,7 +282,11 @@ async def get_sector_exposure(db: AsyncSession, account: Account) -> list[dict]:
         {
             "sector": sector,
             "market_value": value,
-            "pct_of_net_worth": (value / portfolio.net_worth * 100) if portfolio.net_worth else Decimal("0"),
+            "pct_of_net_worth": (
+                (value / portfolio.net_worth * 100).quantize(Decimal("0.01"))
+                if portfolio.net_worth
+                else Decimal("0")
+            ),
         }
         for sector, value in totals.items()
     ]
