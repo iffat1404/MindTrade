@@ -29,8 +29,10 @@ services:
       ADMIN_BOOTSTRAP_USERNAME: ${ADMIN_BOOTSTRAP_USERNAME}
       ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD}
       DATA_DIR: /app/data
+      KYC_UPLOAD_DIR: /app/uploads
     volumes:
       - ./data:/app/data:ro
+      - uploads:/app/uploads
     ports: ["8000:8000"]
 
   frontend:
