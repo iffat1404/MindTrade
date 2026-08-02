@@ -7,7 +7,9 @@ from fastapi.responses import JSONResponse
 
 from app.api import admin, analytics, auth, genai, kyc, orders, paper_trading, portfolio, reports
 from app.core.config import settings
-from app.core.db import close_db
+from app.core.db import AsyncSessionLocal, close_db
+from app.data.seed_demo import seed_database
+from app.services.data.loaders import load_historical_daily_data, load_intraday_minute_data, load_sentiment_data
 
 logging.basicConfig(level=settings.LOG_LEVEL)
 logger = logging.getLogger("mindtrade")
@@ -16,9 +18,15 @@ logger = logging.getLogger("mindtrade")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Schema is managed by Alembic (see backend/start.sh), not created here.
-    # TODO(Sprint 1): call the data loaders (daily/minute/sentiment CSV+JSON
-    # ingestion) and seed_demo.seed_database() here once those modules exist.
     logger.info("MindTrade Platform starting up (environment=%s)", settings.ENVIRONMENT)
+
+    async with AsyncSessionLocal() as session:
+        await load_historical_daily_data(session)
+        await load_intraday_minute_data(session)
+        await load_sentiment_data(session)
+        await seed_database(session)
+
+    logger.info("Startup complete: data loaded, demo accounts seeded")
     yield
     await close_db()
     logger.info("MindTrade Platform shut down")
