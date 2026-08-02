@@ -7,6 +7,8 @@ pydantic==2.8.0
 pydantic-settings==2.4.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+bcrypt==4.0.1               # passlib 1.7.4's bcrypt backend detection breaks on bcrypt>=4.1
+                             # (AttributeError: module 'bcrypt' has no attribute '__about__')
 python-multipart==0.0.9     # File uploads (KYC)
 redis[asyncio]==5.0.8
 anthropic==0.37.0
