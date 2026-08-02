@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.orm import Account, CashLedger, Fill, Order, OrderEvent, OrderMatch, Position
+from app.services import behavioral_guard
 from app.services.portfolio_engine import apply_fill_to_position
 
 logger = logging.getLogger("mindtrade.matching")
@@ -131,6 +132,16 @@ async def _settle_fill(
         fill_qty=fill_qty,
         fill_price=fill_price,
         is_intraday=(order.product_type == "MIS"),
+    )
+    await behavioral_guard.record_fill_outcome(
+        db,
+        account_id=order.account_id,
+        ticker=order.ticker,
+        side=order.side,
+        qty=fill_qty,
+        price=fill_price,
+        realized_pnl=realized,
+        market_time=matched_at,
     )
 
     notional = fill_price * fill_qty

@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal, Optional
 from uuid import UUID
@@ -73,6 +73,12 @@ class OrderCreateRequest(BaseModel):
     limit_price: Optional[Decimal] = Field(default=None, gt=0)
     stop_trigger_price: Optional[Decimal] = Field(default=None, gt=0)
     stop_limit_price: Optional[Decimal] = Field(default=None, gt=0)
+    # Sprint 5: the score id returned by POST /api/genai/behavioral-check,
+    # so create_order can link that audit row to the real order it led to
+    # (behavioral_scores.order_id) and record trader_proceeded=True --
+    # closing the loop between "guardrail scored this" and "trader actually
+    # submitted it anyway" without adding a required extra round-trip.
+    behavioral_score_id: Optional[UUID] = None
 
     @field_validator("ticker")
     @classmethod
@@ -175,3 +181,86 @@ class SectorExposureItem(BaseModel):
 
 class SectorExposureResponse(BaseModel):
     sectors: list[SectorExposureItem]
+
+
+# ---------------------------------------------------------------------------
+# Behavioral Guardrail (Sprint 5)
+# ---------------------------------------------------------------------------
+class BiasSignalResponse(BaseModel):
+    type: str
+    score: int
+    detail: str
+
+    model_config = {"from_attributes": True}
+
+
+class BehavioralInterventionResponse(BaseModel):
+    bias_detected: Optional[str]
+    headline: Optional[str]
+    explanation: Optional[str]
+    reflection_question: Optional[str]
+    educational_fact: Optional[str]
+    trader_can_proceed: bool
+    acknowledgment_required: bool
+
+    model_config = {"from_attributes": True}
+
+
+class BehavioralCheckResponse(BaseModel):
+    id: UUID
+    brs: int
+    risk_level: str
+    signals: list[BiasSignalResponse]
+    intervention: Optional[BehavioralInterventionResponse]
+    proceed: bool = True
+
+
+class BehavioralOutcomeRequest(BaseModel):
+    proceeded: bool
+    acknowledged: Optional[bool] = None
+
+
+class BehavioralHistoryResponse(BaseModel):
+    recent_trades: list[dict]
+    today_order_count: int
+    today_pnl: Decimal
+    session_start: Optional[datetime]
+    last_loss_at: Optional[datetime]
+    last_loss_amount: Optional[Decimal]
+    streak_type: Optional[str]
+    streak_count: int
+    avg_order_size: Decimal
+
+    model_config = {"from_attributes": True}
+
+
+class BRSTrendPointResponse(BaseModel):
+    date: date
+    avg_brs: float
+
+    model_config = {"from_attributes": True}
+
+
+class TopBiasEntryResponse(BaseModel):
+    type: str
+    count: int
+
+    model_config = {"from_attributes": True}
+
+
+class InterventionSummaryResponse(BaseModel):
+    shown: int
+    proceeded: int
+    cancelled: int
+    pending: int
+
+    model_config = {"from_attributes": True}
+
+
+class BehavioralProfileResponse(BaseModel):
+    brs_trend: list[BRSTrendPointResponse]
+    top_biases: list[TopBiasEntryResponse]
+    intervention_summary: InterventionSummaryResponse
+    best_trading_window: Optional[str]
+
+    model_config = {"from_attributes": True}

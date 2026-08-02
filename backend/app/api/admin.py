@@ -12,12 +12,13 @@ from app.api.websockets import notify_kyc_status_update
 from app.core.config import settings
 from app.core.db import get_db
 from app.models.orm import Account, KYCSubmission, Order, OrderMatch
+from app.services import behavioral_guard
 from app.services.feed_simulator import get_feed_state, pause_feed, reset_feed, start_feed
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
-# Endpoints beyond KYC review, matching logs, and feed control (accounts,
-# audit/trade logs, behavioral analytics) land across Sprints 5 and 8.
+# Endpoints beyond KYC review, matching logs, feed control, and behavioral
+# analytics (accounts, audit/trade logs) land in Sprint 8.
 
 
 class RejectRequest(BaseModel):
@@ -189,3 +190,19 @@ async def feed_pause(db: AsyncSession = Depends(get_db)) -> dict:
 async def feed_reset(db: AsyncSession = Depends(get_db)) -> dict:
     state = await reset_feed(db)
     return {"timestamp": state.current_tick_time, "is_running": state.is_running}
+
+
+# ---------------------------------------------------------------------------
+# Behavioral analytics (Sprint 5 -- Part 2.7)
+# ---------------------------------------------------------------------------
+@router.get("/behavioral-analytics", dependencies=[Depends(require_role("admin"))])
+async def platform_behavioral_analytics(db: AsyncSession = Depends(get_db)) -> dict:
+    return await behavioral_guard.get_platform_analytics(db)
+
+
+@router.get("/behavioral-analytics/{account_id}", dependencies=[Depends(require_role("admin"))])
+async def account_behavioral_analytics(account_id: UUID, db: AsyncSession = Depends(get_db)) -> dict:
+    account = await db.get(Account, account_id)
+    if account is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+    return await behavioral_guard.get_account_analytics(db, account)

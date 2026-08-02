@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -8,8 +9,9 @@ from sqlalchemy.orm import selectinload
 
 from app.api.auth import get_current_user
 from app.core.db import get_db
-from app.models.orm import Account, Order, OrderEvent
+from app.models.orm import Account, BehavioralScore, Order, OrderEvent
 from app.models.schemas import OrderCreateRequest, OrderDetailResponse, OrderResponse
+from app.services import behavioral_guard
 from app.services.order_engine import get_latest_market_time, validate_order
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
@@ -45,6 +47,17 @@ async def create_order(
     await db.flush()  # populate order.id for the OrderEvent FK below
     _log_event(db, order, None, "NEW")
 
+    # Sprint 5: link this order back to the behavioral-check score that
+    # preceded it (if the trader went through POST /api/genai/behavioral-check
+    # first), so the behavioral analytics can see it actually proceeded --
+    # regardless of whether validation below ends up rejecting it, since
+    # submitting to the pipeline is itself the "proceed" action.
+    if payload.behavioral_score_id is not None:
+        score = await db.get(BehavioralScore, payload.behavioral_score_id)
+        if score is not None and score.account_id == current_user.id:
+            score.order_id = order.id
+            score.trader_proceeded = True
+
     if not outcome.passed:
         order.status = "REJECTED"
         _log_event(db, order, "NEW", "REJECTED", reason=f"{outcome.reason_code}: {outcome.message}")
@@ -64,6 +77,13 @@ async def create_order(
     # NSE FIFO matching (Sprint 4) picks up ROUTED orders from here.
     order.status = "ROUTED"
     _log_event(db, order, "VALIDATED", "ROUTED", reason="Awaiting NSE matching (Sprint 4)")
+
+    # Behavioral history's overconfidence/overtrading checks count real
+    # trading activity, not rejected attempts -- only bump this once an
+    # order actually reaches ROUTED.
+    await behavioral_guard.record_order_placed(
+        db, account_id=current_user.id, market_time=reference_time or datetime.now(timezone.utc)
+    )
 
     await db.commit()
     await db.refresh(order)
