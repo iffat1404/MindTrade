@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.auth import get_current_user
+from app.api.websockets import notify_admin
 from app.core.db import get_db
 from app.models.orm import Account, BehavioralScore, Order, OrderEvent
 from app.models.schemas import OrderCreateRequest, OrderDetailResponse, OrderResponse
@@ -71,6 +72,12 @@ async def create_order(
     validated_reason = "Passed all validation checks"
     if outcome.wash_trade_flagged:
         validated_reason += f" (WASH_TRADE_FLAG: {outcome.wash_trade_message})"
+        await notify_admin(
+            {
+                "event": "wash_trade_flag", "order_id": str(order.id), "account_id": str(current_user.id),
+                "ticker": order.ticker, "message": outcome.wash_trade_message,
+            }
+        )
     order.status = "VALIDATED"
     _log_event(db, order, "NEW", "VALIDATED", reason=validated_reason)
 

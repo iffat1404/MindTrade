@@ -6,6 +6,7 @@ from typing import Callable, Optional
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.websockets import broadcast_market_tick
 from app.core.config import settings
 from app.models.orm import FeedState, Position, PriceHistoryMinute
 from app.services.order_engine import get_last_price
@@ -117,6 +118,13 @@ async def _advance_one_tick(db: AsyncSession) -> Optional[datetime]:
             low=bar.low, close=bar.close, volume=bar.volume,
         )
         await process_tick(db, tick)
+        await broadcast_market_tick(
+            bar.ticker,
+            {
+                "ticker": bar.ticker, "timestamp": bar.timestamp.isoformat(), "open": str(bar.open),
+                "high": str(bar.high), "low": str(bar.low), "close": str(bar.close), "volume": bar.volume,
+            },
+        )
 
     if _is_last_tick_of_day(next_time):
         await _square_off_all_mis(db, next_time)

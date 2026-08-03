@@ -6,7 +6,20 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import admin, analytics, auth, genai, kyc, orders, paper_trading, portfolio, reports, trader, websockets
+from app.api import (
+    admin,
+    analytics,
+    auth,
+    genai,
+    kyc,
+    orders,
+    paper_trading,
+    portfolio,
+    prices,
+    reports,
+    trader,
+    websockets,
+)
 from app.core.config import settings
 from app.core.db import AsyncSessionLocal, close_db
 from app.data.seed_demo import seed_database
@@ -94,4 +107,5 @@ app.include_router(analytics.router)
 app.include_router(paper_trading.router)
 app.include_router(genai.router)
 app.include_router(trader.router)
+app.include_router(prices.router)
 app.include_router(websockets.router)

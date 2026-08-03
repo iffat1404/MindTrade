@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
+from app.api.websockets import notify_admin
 from app.core.config import settings
 from app.core.db import get_db
 from app.models.orm import Account, KYCSubmission
@@ -92,6 +93,15 @@ async def submit_kyc(
 
     await db.commit()
     await db.refresh(submission)
+
+    await notify_admin(
+        {
+            "event": "kyc_submission",
+            "submission_id": str(submission.id),
+            "account_id": str(current_user.id),
+            "declared_full_name": declared_full_name,
+        }
+    )
 
     return {"submission_id": submission.id, "status": submission.status}
 

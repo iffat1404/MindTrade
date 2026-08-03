@@ -144,6 +144,12 @@ class Order(Base):
     stop_limit_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4))
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="NEW", server_default="NEW")
     is_backtest: Mapped[bool] = mapped_column(nullable=False, default=False, server_default=text("false"))
+    # Sprint 7: attributes a backtest-generated order to the specific run
+    # that created it, so GET /api/backtest/{id}/trades can query directly
+    # instead of reconstructing "which orders belong to this run" from
+    # is_backtest + ticker + a time window (fragile once multiple backtests
+    # exist for the same account/ticker).
+    backtest_run_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("backtest_runs.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("NOW()"))
 
     account: Mapped["Account"] = relationship(back_populates="orders")
@@ -377,6 +383,12 @@ class BacktestRun(Base):
     max_drawdown: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 6))
     win_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 4))
     benchmark_return: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 6))
+    # Sprint 7: not in the original schema -- FRONTEND_DESIGN_GUIDE's Paper
+    # Trading page explicitly wants an equity curve chart and an optional
+    # Sharpe ratio, and GET /api/backtest/{id}/results needs somewhere to
+    # read the curve back from without recomputing it from scratch.
+    sharpe_ratio: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4))
+    equity_curve: Mapped[Optional[list]] = mapped_column(JSONB)
     run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("NOW()"))
 
     strategy: Mapped["Strategy"] = relationship(back_populates="backtest_runs")

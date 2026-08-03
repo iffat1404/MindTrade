@@ -8,10 +8,11 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api import websockets
 from app.core.config import settings
 from app.models.orm import Account, CashLedger, Fill, Order, OrderEvent, OrderMatch, Position
 from app.services import behavioral_guard
-from app.services.portfolio_engine import apply_fill_to_position
+from app.services.portfolio_engine import apply_fill_to_position, get_portfolio
 
 logger = logging.getLogger("mindtrade.matching")
 
@@ -168,6 +169,27 @@ async def _settle_fill(
 
     if order.product_type == "MIS":
         await _recompute_margin_used(db, account)
+
+    if not order.is_backtest:
+        # Backtest fills are historical simulation, not live trading
+        # activity -- broadcasting them to /ws/account would spam the
+        # channel with events the trader never asked to watch in real time.
+        await websockets.notify_order_update(
+            order.account_id,
+            {
+                "order_id": str(order.id), "ticker": order.ticker, "side": order.side,
+                "status": order.status, "fill_qty": fill_qty, "fill_price": str(fill_price),
+                "match_type": match_type,
+            },
+        )
+        portfolio = await get_portfolio(db, account)
+        await websockets.notify_portfolio_update(
+            order.account_id,
+            {
+                "cash_balance": str(portfolio.cash_balance), "net_worth": str(portfolio.net_worth),
+                "unrealized_pnl_total": str(portfolio.unrealized_pnl_total),
+            },
+        )
 
     logger.info(
         "Filled order %s: %s %d %s @ %s (%s), realized_pnl=%s",

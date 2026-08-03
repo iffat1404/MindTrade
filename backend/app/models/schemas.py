@@ -315,3 +315,54 @@ class OrderParseResponse(BaseModel):
     parse_failed: bool
 
     model_config = {"from_attributes": True, "populate_by_name": True}
+
+
+# ---------------------------------------------------------------------------
+# Paper trading / backtesting (Sprint 7)
+# ---------------------------------------------------------------------------
+class BacktestRequest(BaseModel):
+    ticker: str
+    entry_rule: str = Field(min_length=1, max_length=100)
+    exit_rule: str = Field(min_length=1, max_length=100)
+    position_size: int = Field(gt=0)
+    start_date: date
+    end_date: date
+
+    @field_validator("ticker")
+    @classmethod
+    def normalize_ticker(cls, v: str) -> str:
+        return v.strip().upper()
+
+
+class BacktestCreateResponse(BaseModel):
+    backtest_id: UUID
+
+
+class EquityPointResponse(BaseModel):
+    date: date
+    equity: float
+
+    model_config = {"from_attributes": True}
+
+
+class BacktestResultsResponse(BaseModel):
+    backtest_id: UUID
+    ticker: str
+    entry_rule: str
+    exit_rule: str
+    total_return: Optional[Decimal]
+    max_drawdown: Optional[Decimal]
+    win_rate: Optional[Decimal]
+    benchmark_return: Optional[Decimal]
+    sharpe_ratio: Optional[Decimal]
+    equity_curve: list[EquityPointResponse]
+
+
+class BacktestTradeResponse(BaseModel):
+    side: str
+    date: date
+    price: Decimal
+    qty: int
+    realized_pnl: Optional[Decimal]
+
+    model_config = {"from_attributes": True}
