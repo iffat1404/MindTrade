@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models.orm import BacktestRun, Fill, Order, PriceHistoryDaily, Strategy
+from app.models.orm import BacktestRun, Fill, Order, OrderEvent, PriceHistoryDaily, Strategy
 from app.services import indicators
 from app.services.portfolio_engine import apply_fill_to_position
 
@@ -78,6 +78,18 @@ async def _record_backtest_fill(
     )
     db.add(order)
     await db.flush()
+    # Backtest orders skip the real order_matching.py fill path (no NSE
+    # matching needed against historical daily bars), so unlike a live
+    # order they'd otherwise have no order_events audit trail at all --
+    # log the same NEW->FILLED shape the admin Audit Log Inspector expects
+    # for every other order.
+    db.add(OrderEvent(order_id=order.id, from_state=None, to_state="NEW", reason="Backtest simulated order"))
+    db.add(
+        OrderEvent(
+            order_id=order.id, from_state="NEW", to_state="FILLED",
+            reason=f"Backtest fill {qty}@{price} via BACKTEST",
+        )
+    )
 
     fill = Fill(
         order_id=order.id, fill_price=price, fill_qty=qty, fees=Decimal("0"), reason="BACKTEST",
