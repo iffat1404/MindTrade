@@ -264,3 +264,54 @@ class BehavioralProfileResponse(BaseModel):
     best_trading_window: Optional[str]
 
     model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Session Review (Sprint 6)
+# ---------------------------------------------------------------------------
+class CriticalMomentResponse(BaseModel):
+    type: str  # nemesis | caution | success
+    title: str
+    timestamp: datetime
+    ticker: str
+    side: str
+    bias_name: Optional[str]
+    brs: int
+    claude_analysis: Optional[str]
+    lesson: Optional[str]
+
+
+class SessionStatsResponse(BaseModel):
+    brs: Optional[float]
+    trade_count: int
+    win_rate: Optional[float]
+    worst_pattern: Optional[str]
+    best_window: Optional[str]
+
+    model_config = {"from_attributes": True}
+
+
+class SessionReviewResponse(BaseModel):
+    date: date
+    critical_moments: list[CriticalMomentResponse]
+    session_stats: SessionStatsResponse
+
+
+# ---------------------------------------------------------------------------
+# GenAI order parsing (Sprint 6, Task 6.5)
+# ---------------------------------------------------------------------------
+class OrderParseRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+
+
+class OrderParseResponse(BaseModel):
+    ticker: Optional[str]
+    side: Optional[str]
+    order_type: Optional[str] = Field(default=None, serialization_alias="type")
+    qty: Optional[int]
+    limit_price: Optional[Decimal]
+    product_type: Optional[str]
+    clarification_needed: Optional[str]
+    parse_failed: bool
+
+    model_config = {"from_attributes": True, "populate_by_name": True}

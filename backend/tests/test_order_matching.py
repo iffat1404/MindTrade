@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy import select
 
 from app.core.security import get_password_hash
-from app.models.orm import Account, Order, OrderMatch, Position
+from app.models.orm import Account, Fill, Order, OrderMatch, Position, PositionLot
 from app.services import order_matching as om
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
@@ -227,3 +227,40 @@ async def test_mis_fill_updates_margin_used(db):
     )
     expected_margin = abs(position.signed_qty) * position.avg_cost * Decimal("1.5")
     assert account.margin_used == expected_margin
+
+
+async def test_fill_persists_realized_pnl_and_wires_position_lot_fill_id(db):
+    """Sprint 6: Fill.realized_pnl must be persisted (Session Review needs
+    per-fill outcomes queryable by date), and the PositionLot created for
+    an opening fill must carry that fill's id (previously always NULL --
+    apply_fill_to_position accepted fill_id but _settle_fill never passed it).
+    """
+    account = await _make_account(db)
+    order = await _make_order(db, account, side="BUY", order_type="MARKET", qty=10)
+    await om.process_tick(db, _tick())
+
+    # Scoped to this test's own order_id -- other tests in this suite (e.g.
+    # test_feed_simulator.py's EOD square-off test) commit real AAPL
+    # fills/matches of their own, so an unscoped query risks nondeterministically
+    # picking up someone else's row instead of this test's.
+    match = await db.scalar(select(OrderMatch).where(OrderMatch.order_id == order.id))
+    fill = await db.scalar(select(Fill).where(Fill.order_id == match.order_id))
+    assert fill.realized_pnl == Decimal("0.00")  # opening fill, nothing closed yet
+
+    lot = await db.scalar(
+        select(PositionLot).where(PositionLot.account_id == account.id, PositionLot.ticker == "AAPL")
+    )
+    assert lot.fill_id == fill.id
+
+
+async def test_closing_fill_realized_pnl_is_nonzero(db):
+    account = await _make_account(db)
+    await _make_order(db, account, side="BUY", order_type="MARKET", qty=10)
+    await om.process_tick(db, _tick(close=Decimal("100.00"), open=Decimal("100"), high=Decimal("101"), low=Decimal("99")))
+
+    sell_order = await _make_order(db, account, side="SELL", order_type="MARKET", qty=10)
+    await om.process_tick(db, _tick(close=Decimal("120.00"), open=Decimal("120"), high=Decimal("121"), low=Decimal("119")))
+
+    sell_match = await db.scalar(select(OrderMatch).where(OrderMatch.order_id == sell_order.id))
+    closing_fill = await db.scalar(select(Fill).where(Fill.order_id == sell_match.order_id))
+    assert closing_fill.realized_pnl > 0  # bought at ~100, sold at ~120

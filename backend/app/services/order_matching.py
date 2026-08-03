@@ -94,15 +94,22 @@ async def _settle_fill(
     remaining_qty/status update, order_events transition, position (via
     FIFO lots), cash ledger + account cash/margin.
     """
-    db.add(
-        Fill(
-            order_id=order.id,
-            fill_price=fill_price,
-            fill_qty=fill_qty,
-            fees=settings.COMMISSION_FLAT_FEE,
-            reason=match_type,
-        )
+    fill = Fill(
+        order_id=order.id,
+        fill_price=fill_price,
+        fill_qty=fill_qty,
+        fees=settings.COMMISSION_FLAT_FEE,
+        reason=match_type,
+        # Sprint 6: without this, Fill.timestamp silently defaults to the
+        # server's real wall-clock NOW() instead of the simulated tick time
+        # -- Session Review filters fills by simulated date, which found
+        # nothing because every fill's timestamp was really "today" in real
+        # time, not the simulated market date it was filled on. OrderMatch
+        # already gets this right via its explicit matched_at column.
+        timestamp=matched_at,
     )
+    db.add(fill)
+    await db.flush()  # populate fill.id for apply_fill_to_position's fill_id below
     db.add(
         OrderMatch(
             order_id=order.id,
@@ -132,7 +139,10 @@ async def _settle_fill(
         fill_qty=fill_qty,
         fill_price=fill_price,
         is_intraday=(order.product_type == "MIS"),
+        fill_id=fill.id,
     )
+    fill.realized_pnl = realized
+    await db.flush()
     await behavioral_guard.record_fill_outcome(
         db,
         account_id=order.account_id,

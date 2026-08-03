@@ -14,14 +14,13 @@ from app.models.schemas import (
     BehavioralOutcomeRequest,
     BiasSignalResponse,
     OrderCreateRequest,
+    OrderParseRequest,
+    OrderParseResponse,
 )
 from app.services import behavioral_guard, genai_client
 from app.services.order_engine import get_latest_market_time
 
 router = APIRouter(prefix="/api/genai", tags=["genai"])
-
-# Endpoints beyond behavioral-check (parse-order, explain, portfolio-summary,
-# explain-rejection) land in Sprint 6.
 
 
 @router.post("/behavioral-check", response_model=BehavioralCheckResponse)
@@ -123,3 +122,15 @@ async def behavioral_check_outcome(
         "trader_proceeded": score.trader_proceeded,
         "trader_acknowledged": score.trader_acknowledged,
     }
+
+
+@router.post("/parse-order", response_model=OrderParseResponse)
+async def parse_order(
+    payload: OrderParseRequest, current_user: Account = Depends(get_current_user)
+) -> OrderParseResponse:
+    """US-6.4: turns free text like "buy 100 apple at market" into a draft
+    order. Always a draft -- the trader must review and explicitly submit
+    via POST /api/orders themselves; this endpoint never places a trade.
+    """
+    result = await genai_client.parse_order_text(payload.text)
+    return OrderParseResponse.model_validate(result)

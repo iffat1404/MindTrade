@@ -210,6 +210,17 @@ class Fill(Base):
     fees: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False, server_default="1.00")
     is_backtest: Mapped[bool] = mapped_column(nullable=False, default=False, server_default=text("false"))
     reason: Mapped[Optional[str]] = mapped_column(String(50))
+    # Sprint 6: the realized P&L this specific fill generated via FIFO lot
+    # consumption (0 if it only opened/extended a position, nothing closed).
+    # Not in the original schema -- apply_fill_to_position always computed
+    # this value but it was only ever passed transiently into
+    # behavioral_guard.record_fill_outcome (which stashes it in a
+    # capped-at-20 JSONB blob) or logged, never persisted anywhere
+    # queryable by date. Session Review (Sprint 6) needs to reliably
+    # compute win_rate/outcomes for an arbitrary past date, which the
+    # capped rolling buffer can't guarantee once more than ~20 fills have
+    # happened since.
+    realized_pnl: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2))
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("NOW()"))
 
     order: Mapped["Order"] = relationship(back_populates="fills")

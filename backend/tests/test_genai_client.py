@@ -94,3 +94,93 @@ async def test_falls_back_gracefully_on_api_error(monkeypatch):
         acknowledgment_required=False,
     )
     assert result.skip_intervention is True
+
+
+# ---------------------------------------------------------------------------
+# parse_order_text (Sprint 6, Task 6.5)
+# ---------------------------------------------------------------------------
+async def test_parse_order_skips_when_no_api_key(monkeypatch):
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "")
+    result = await genai_client.parse_order_text("buy 100 apple at market")
+    assert result.parse_failed is True
+    assert result.ticker is None
+
+
+async def test_parse_order_on_mocked_success(monkeypatch):
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "fake-key-for-test")
+
+    payload = {
+        "ticker": "AAPL", "side": "BUY", "order_type": "MARKET", "qty": 100,
+        "limit_price": None, "product_type": "CNC", "clarification_needed": None,
+    }
+
+    class _FakeContentBlock:
+        text = json.dumps(payload)
+
+    class _FakeResponse:
+        content = [_FakeContentBlock()]
+
+    class _FakeMessages:
+        async def create(self, **kwargs):
+            return _FakeResponse()
+
+    class _FakeAsyncAnthropic:
+        def __init__(self, api_key):
+            self.messages = _FakeMessages()
+
+    monkeypatch.setattr(genai_client, "AsyncAnthropic", _FakeAsyncAnthropic)
+
+    result = await genai_client.parse_order_text("buy 100 apple at market")
+    assert result.parse_failed is False
+    assert result.ticker == "AAPL"
+    assert result.side == "BUY"
+    assert result.order_type == "MARKET"
+    assert result.qty == 100
+    assert result.limit_price is None
+
+
+async def test_parse_order_limit_price_parsed_as_decimal(monkeypatch):
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "fake-key-for-test")
+
+    payload = {
+        "ticker": "MSFT", "side": "BUY", "order_type": "LIMIT", "qty": 10,
+        "limit_price": "410.50", "product_type": "CNC", "clarification_needed": None,
+    }
+
+    class _FakeContentBlock:
+        text = json.dumps(payload)
+
+    class _FakeResponse:
+        content = [_FakeContentBlock()]
+
+    class _FakeMessages:
+        async def create(self, **kwargs):
+            return _FakeResponse()
+
+    class _FakeAsyncAnthropic:
+        def __init__(self, api_key):
+            self.messages = _FakeMessages()
+
+    monkeypatch.setattr(genai_client, "AsyncAnthropic", _FakeAsyncAnthropic)
+
+    result = await genai_client.parse_order_text("buy 10 msft at 410.50")
+    from decimal import Decimal
+
+    assert result.limit_price == Decimal("410.50")
+
+
+async def test_parse_order_falls_back_on_api_error(monkeypatch):
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "fake-key-for-test")
+
+    class _FakeMessages:
+        async def create(self, **kwargs):
+            raise RuntimeError("simulated API failure")
+
+    class _FakeAsyncAnthropic:
+        def __init__(self, api_key):
+            self.messages = _FakeMessages()
+
+    monkeypatch.setattr(genai_client, "AsyncAnthropic", _FakeAsyncAnthropic)
+
+    result = await genai_client.parse_order_text("buy 100 apple at market")
+    assert result.parse_failed is True

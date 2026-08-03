@@ -4,6 +4,7 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
 from anthropic import AsyncAnthropic
@@ -221,3 +222,83 @@ async def generate_behavioral_intervention(
     except Exception:
         logger.exception("GenAI behavioral intervention failed; proceeding without intervention")
         return BehavioralIntervention(skip_intervention=True)
+
+
+# ---------------------------------------------------------------------------
+# Order parsing (Sprint 6, Task 6.5 -- US-6.4)
+# ---------------------------------------------------------------------------
+_ORDER_PARSE_PROMPT_TEMPLATE = """Parse this natural-language trading instruction into a structured draft order.
+
+Instruction: "{text}"
+
+Valid tickers: {tickers}
+Valid sides: BUY, SELL
+Valid order types: MARKET, LIMIT, SL, SL-M
+Valid product types: CNC (delivery), MIS (intraday) -- default to CNC if not specified
+
+If the instruction doesn't mention a limit/trigger price and implies an
+immediate trade, use type "MARKET" and leave limit_price null. If
+something essential is missing or ambiguous (e.g. no ticker, no
+quantity), set that field to null and describe what's missing in
+clarification_needed; otherwise clarification_needed should be null.
+This is a DRAFT for the trader to review and confirm -- never invent
+values you can't reasonably infer from the text.
+
+Return ONLY a JSON object with exactly these keys, no other text:
+{{"ticker": ..., "side": ..., "order_type": ..., "qty": ..., "limit_price": ..., "product_type": ..., "clarification_needed": ...}}
+"""
+
+
+@dataclass
+class OrderParseResult:
+    ticker: Optional[str] = None
+    side: Optional[str] = None
+    order_type: Optional[str] = None
+    qty: Optional[int] = None
+    limit_price: Optional[Decimal] = None
+    product_type: Optional[str] = None
+    clarification_needed: Optional[str] = None
+    # True whenever no draft could be produced (no API key, timeout,
+    # malformed response) -- the trader falls back to the manual order
+    # form rather than the request failing outright.
+    parse_failed: bool = False
+
+
+async def parse_order_text(text: str) -> OrderParseResult:
+    """Parses free text like "buy 100 apple at market" into a draft order
+    (US-6.4). Always a draft: the trader must confirm before
+    POST /api/orders is ever called -- this function never submits
+    anything itself.
+
+    Never raises: any failure returns parse_failed=True.
+    """
+    if not settings.ANTHROPIC_API_KEY:
+        logger.warning("ANTHROPIC_API_KEY not configured -- skipping order parsing")
+        return OrderParseResult(parse_failed=True)
+
+    prompt = _ORDER_PARSE_PROMPT_TEMPLATE.format(text=text, tickers=", ".join(settings.TICKERS))
+
+    try:
+        client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        response = await asyncio.wait_for(
+            client.messages.create(
+                model=settings.GENAI_MODEL,
+                max_tokens=settings.GENAI_MAX_TOKENS_ORDER_PARSE,
+                messages=[{"role": "user", "content": prompt}],
+            ),
+            timeout=settings.GENAI_TIMEOUT_SECONDS,
+        )
+        payload = json.loads(response.content[0].text)
+        limit_price = payload.get("limit_price")
+        return OrderParseResult(
+            ticker=payload.get("ticker"),
+            side=payload.get("side"),
+            order_type=payload.get("order_type"),
+            qty=payload.get("qty"),
+            limit_price=Decimal(str(limit_price)) if limit_price is not None else None,
+            product_type=payload.get("product_type"),
+            clarification_needed=payload.get("clarification_needed"),
+        )
+    except Exception:
+        logger.exception("GenAI order parsing failed")
+        return OrderParseResult(parse_failed=True)

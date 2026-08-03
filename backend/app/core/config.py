@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     GENAI_MODEL: str = "claude-sonnet-4-6"
     GENAI_TIMEOUT_SECONDS: int = 15
     GENAI_MAX_TOKENS_BEHAVIORAL: int = 400
+    GENAI_MAX_TOKENS_SESSION_REVIEW: int = 300  # per Sprint 6 DoD: "300 tokens, plain language"
+    GENAI_MAX_TOKENS_ORDER_PARSE: int = 200
 
     # --- Ticker universe (Module G data loaders) ---
     TICKERS: list[str] = ["AAPL", "GOOG", "IBM", "MSFT", "TSLA", "UL", "WMT"]
